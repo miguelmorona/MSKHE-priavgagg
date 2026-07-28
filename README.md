@@ -1,8 +1,8 @@
 # Pushing-Forward-Multi-Secret-Key-Homomorphic-Encryption-for-Private-Average-Aggregation
-GOLANG code of the implementations runtimes on the paper. The codes implement secure aggregation using two state of the art HE schemes: BFV & CKKS. The names of the scripts are the following:
+GOLANG code of the implementations runtimes on the paper. The codes implement secure aggregation using two state of the art HE schemes: **BFV** & **CKKS**. The names of the scripts are the following:
 
-* CKKS-MSK.go
-* BFV-MSK.go
+* **CKKS-MSK.go**
+* **BFV-MSK.go**
 
 Each subfolder is an independent Go module (`go.mod`, `go.sum`, `main.go`).
 
