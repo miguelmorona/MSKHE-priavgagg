@@ -6,7 +6,7 @@ GOLANG code of the implementations runtimes on the paper. The codes implement se
 * **CKKS-PROPOSED.go**
 * **BFV-PROPOSED.go**
 
-Each subfolder is an independent Go module (`go.mod`, `go.sum`, `main.go`).
+Each folder is an independent Go module (`go.mod`, `go.sum`, `main.go`).
 
 We recommend to check the [Lattigo](https://github.com/tuneinsight/lattigo) Library, where we compare with MHE and we use the cryptographic primitives. Our code runs Lattigo v.5, which is not the latest version but works fine. 
 
