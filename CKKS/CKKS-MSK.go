@@ -1,24 +1,3 @@
-// Copyright 2024 Alberto Pedrouzo Ulloa
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-//This code recreates step by step the multi-key encryption with no calls to ckks.NewEncryptor, ckks.NewDecryptor, etc. functions.
-
-// ----------------------------------------------------------------------------------------------//
-// For more details about the multi-key secure aggregation rule with HE, see the preliminary work "Practical Multi-Key Homomorphic Encryption for More Flexible and Efficient Secure Federated Average Aggregation"
-// (<https://ieeexplore.ieee.org/document/10224979> or <https://eprint.iacr.org/2022/1674>)
-// ----------------------------------------------------------------------------------------------//
-
 package main
 
 import (
@@ -56,17 +35,6 @@ func runTimedParty(f func(), N int) time.Duration {
 	f()
 	return time.Duration(time.Since(start).Nanoseconds() / int64(N))
 }
-
-//
-//This code implements a multi-key secure aggregation protocol based on the CKKS homomorphic encryption scheme. Is the approximate version of the exact protocol implemented in BFV-expansion.go
-//
-// For more details about multi-key secure aggregation with HE see the preliminary work "Practical Multi-Key Homomorphic Encryption for More Flexible and Efficient Secure Federated Average Aggregation"
-// (<https://ieeexplore.ieee.org/document/10224979> or <https://eprint.iacr.org/2022/1674>)
-// ----------------------------------------------------------------------------------------------//
-
-// ----------------------------------------------------------------------------------------------//
-// Comments: The code of this script was started by relying on the Examples folder available in Lattigo "https://github.com/tuneinsight/lattigo"
-// ----------------------------------------------------------------------------------------------//
 
 // Definition of command line variables
 var flagCommandLine = flag.Bool("commandline", false, "run the example with the command-line parameters.")
@@ -169,7 +137,6 @@ func newAggRings(params parameters) *AggRings {
 	rings.ringQ, err = ring.NewRing(N, primes)
 	check(err)
 
-	// Initialize Δ as 2^40 such that is less than q1 (second limb) such that m~q0 and Δ*m ~ q1*q0 = plevel
 	rings.Delta = new(big.Int).Lsh(big.NewInt(1), uint(params.bench_Delta)) // Param set 2. Delta = 2^40. Param set 3. Delta  = 2^90
 
 	return rings
@@ -195,15 +162,11 @@ func (lns *lowNormSampler) newPolyLowNorm(delta *big.Int) (pol ring.Poly) {
     pol = lns.baseRing.NewPoly()
     prng, _ := sampling.NewPRNG()
 
-    // Calculamos el tamaño del rango: 2*delta + 1
     rangeSize := new(big.Int).Mul(delta, big.NewInt(2))
     rangeSize.Add(rangeSize, big.NewInt(1))
 
     for i := range lns.coeffs {
-        // 1. Genera un valor en el rango [0, 2*delta]
-        tmp := bignum.RandInt(prng, rangeSize)
-        
-        // 2. Resta delta para centrar el valor en [-delta, delta]
+        tmp := bignum.RandInt(prng, rangeSize)        
         lns.coeffs[i] = new(big.Int).Sub(tmp, delta)
     }
 
@@ -224,14 +187,9 @@ func PolyToFloat64Slice(pol ring.Poly, r *ring.Ring) []float64 {
 	return coeffs
 }
 
-// ----------------------------------------------------------------------------------------------//
-// Information extracted from Lattigo library "https://github.com/tuneinsight/lattigo" (it can be used to generate the correlated randomness):
-// ----------------------------------------------------------------------------------------------//
-// KeyedPRNG is a structure storing the parameters used to securely and deterministically generate shared
-// sequences of random bytes among different parties using the hash function blake2b. Backward sequence
-// security (given the digest i, compute the digest i-1) is ensured by default, however forward sequence
-// security (given the digest i, compute the digest i+1) is only ensured if the KeyedPRNG is keyed.
-// ----------------------------------------------------------------------------------------------//
+// main function. Example execution on terminal:
+
+// go run ./CKKS-MSK.go 
 
 func main() {
 
@@ -254,16 +212,15 @@ func main() {
 		paramsSets[0].PreComputeA = *flagPreComputeA
 	}
 
-	// ----------------------------------------------------------------------------------------------//
 
 	// ----------------------------------------------------------------------------------------------//
-	// Running several aggregation examples
+	//                        Running several aggregation examples
 	// ----------------------------------------------------------------------------------------------//
 
 	for _, param := range paramsSets {
 
 		// ----------------------------------------------------------------------------------------------//
-		// Cryptographic parameters and initialization of samplers
+		//                   Cryptographic parameters and initialization of samplers
 		// ----------------------------------------------------------------------------------------------//
 
 		// Initialize cryptographic parameters and structures for aggregation
@@ -272,9 +229,6 @@ func main() {
 
 		// Extract protocol and cryptographic parameters from the current configuration
 		n := param.n // Number of ciphertexts per party to aggregate
-		//qlevel := ringQ.MaxLevel()       // Maximum level for the ciphertext ring modulus
-		//plevel := param.plevel           // p modulus level
-		//levelsize := param.logQ[1]       // Bit size of the modulus primes
 		NumParties := param.NumParties   // Number of parties in the protocol
 		PreComputeA := param.PreComputeA // Flag for pre-computation optimization
 		_ = PreComputeA
@@ -413,13 +367,11 @@ func main() {
 			l.Printf("\t\t\t||           - Results decoded. Showing some rows:                                                                       ||")
 			l.Printf("\t\t\t||                                                                                                                       ||")
 
-			// Dividir entre NumParties * Delta para acotar a [-1, 1]
 			partiesBig := big.NewInt(int64(NumParties))
 			modulus := new(big.Int).Mul(priaggrings.Delta, partiesBig)
 			
 			flatAggExp = DivideByBigInt(flatAggExp, modulus)
-			flatRecAggShare = DivideByBigInt(flatRecAggShare, modulus)			
-			
+			flatRecAggShare = DivideByBigInt(flatRecAggShare, modulus)				
 
 			maxAbsErr := 0.0
 			nerror := 0
@@ -607,19 +559,19 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
         for _, pi := range P {
             pi.input = make([]ring.Poly, n)
             for i := 0; i < n; i++ {
-                // Generamos en el rango [-Delta, Delta]
+                // Generate in range [-Delta, Delta]
                 pi.input[i] = lowNormUniformQ.newPolyLowNorm(delta)
 
-                // Transformamos a NTT
+                // Transform to NTT
                 aggring.ringQ.NTT(pi.input[i], pi.input[i])
 
-                // Acumulamos en aggexp
+                // Acumulate in aggexp
                 aggring.ringQ.Add(pi.input[i], aggexp[i], aggexp[i])
             }
         }
 
-        // Volvemos al dominio estándar
-        for i := 0; i < n; i++ {
+        // Back to standard domain
+		for i := 0; i < n; i++ {
             aggring.ringQ.INTT(aggexp[i], aggexp[i]) 
             //aggexp[i].Resize(param.plevel)           
         }
@@ -657,8 +609,6 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 	elapsedEncryptParty = time.Duration(0)
 	elapsedEncryptParty += runTimedParty(func() {
 
-		// Temporary buffers for polynomial operations
-		//buff := aggring.ringQ.NewPoly() // Buffer for intermediate storage
 		tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
 
 		// Initialize arrays to hold encrypted inputs and partial decryptions for each party
@@ -762,9 +712,6 @@ func evalPhase(aggring *AggRings, n int, encInput [][]ring.Poly) (encShareAgg []
 
 	// Measure and add time spent on this function to "elapsedEvalCloud"
 	elapsedEvalCloud += runTimed(func() {
-
-		// Initialize a buffer polynomial to temporarily hold intermediate calculations
-		//buff := aggring.ringQ.NewPoly()
 
 		// Initialize "encShareAgg" to store the aggregated ciphertext for each input
 		encShareAgg = make([]ring.Poly, n)
