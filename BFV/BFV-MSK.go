@@ -1,24 +1,3 @@
-// Copyright 2024 Alberto Pedrouzo Ulloa
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-//This code recreates step by step the multi-key encryption with no calls to bfv.NewEncryptor, bfv.NewDecryptor, etc. functions.
-
-// ----------------------------------------------------------------------------------------------//
-// For more details about multi-key secure aggregation with HE see the preliminary work "Practical Multi-Key Homomorphic Encryption for More Flexible and Efficient Secure Federated Average Aggregation"
-// (<https://ieeexplore.ieee.org/document/10224979> or <https://eprint.iacr.org/2022/1674>)
-// ----------------------------------------------------------------------------------------------//
-
 package main
 
 import (
@@ -203,26 +182,17 @@ func (lns *lowNormSampler) newPolyLowNorm(norm *big.Int) (pol ring.Poly) {
 	return
 }
 
-// ----------------------------------------------------------------------------------------------//
-// Information extracted from Lattigo library "https://github.com/tuneinsight/lattigo" (it can be used to generate the correlated randomness):
-// ----------------------------------------------------------------------------------------------//
-// KeyedPRNG is a structure storing the parameters used to securely and deterministically generate shared
-// sequences of random bytes among different parties using the hash function blake2b. Backward sequence
-// security (given the digest i, compute the digest i-1) is ensured by default, however forward sequence
-// security (given the digest i, compute the digest i+1) is only ensured if the KeyedPRNG is keyed.
-// ----------------------------------------------------------------------------------------------//
+// main function. Example execution on terminal:
 
-// main function. Example executions:
-// (1) From command line parameters: go run ./mkAgg.go -commandline -numparties 10 -numctxperparty 2 -qlevel 2 -plevel 0 -logN 11 -bitlevelsize 30
+// go run ./BFV-MSK.go 
+
 
 func main() {
 
-	file, err := os.OpenFile("bfv-results-2.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)	
+	file, err := os.OpenFile("bfv-results.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)	
 	check(err)
 	defer file.Close() 
 	l := log.New(file, "", 0)
-
-	//l := log.New(os.Stderr, "", 0)
 
 	flag.Parse()
 
@@ -241,7 +211,7 @@ func main() {
 	for _, param := range paramsSets {
 
 		// ----------------------------------------------------------------------------------------------//
-		// Cryptographic parameters and initialization of samplers
+		//                   Cryptographic parameters and initialization of samplers
 		// ----------------------------------------------------------------------------------------------//
 
 		// Initialize cryptographic parameters and structures for aggregation
@@ -250,9 +220,6 @@ func main() {
 
 		// Extract protocol and cryptographic parameters from the current configuration
 		n := param.n // Number of ciphertexts per party to aggregate
-		//qlevel := ringQ.MaxLevel()       // Maximum level for the ciphertext ring modulus
-		//plevel := param.plevel // p modulus level
-		//levelsize := param.logQ[1]       // Bit size of the modulus primes
 		NumParties := param.NumParties   // Number of parties in the protocol
 		PreComputeA := param.PreComputeA // Flag for pre-computation optimization
 		_ = PreComputeA
@@ -724,9 +691,6 @@ func evalPhase(aggring *AggRings, n int, encInput [][]ring.Poly, param parameter
 
 	// Measure and add time spent on this function to "elapsedEvalCloud"
 	elapsedEvalCloud += runTimed(func() {
-
-		// Initialize a buffer polynomial to temporarily hold intermediate calculations
-		//buff := aggring.ringQ.NewPoly()
 
 		// Initialize "encShareAgg" to store the aggregated ciphertext for each input
 		encShareAgg = make([]ring.Poly, n)
