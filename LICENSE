@@ -10,8 +10,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-This project makes use of the Lattigo v5 library, which is licensed under the Apache License 2.0.
-For more details, see https://github.com/tuneinsight/lattigo/blob/master/LICENSE.
+This project makes use of the Lattigo v5 library, which is licensed under 
+the Apache License 2.0. For more details, see 
+https://github.com/tuneinsight/lattigo/blob/main/LICENSE.
+
+Additionally, thie structure of this project is based on the code of the 
+paper "Practical Multi-Key Homomorphic Encryption for More Flexible and
+Efficient Secure Federated Average Aggregation", which is also licensed
+under the Apache License 2.0. For more details, see
+https://github.com/apedrouzoulloa/mkagg/blob/main/LICENSE.
 
 ----------------------------------------------------------------------------
 
