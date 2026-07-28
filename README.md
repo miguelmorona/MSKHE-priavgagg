@@ -1,6 +1,8 @@
 # Pushing-Forward-Multi-Secret-Key-Homomorphic-Encryption-for-Private-Average-Aggregation
 GOLANG code of the implementations runtimes on the paper. The codes implement secure aggregation using two state of the art HE schemes: **BFV** & **CKKS**. The names of the scripts are the following:
 
+* **CKKS-MHE.go**
+* **BFV-MHE.go**
 * **CKKS-MSK.go**
 * **BFV-MSK.go**
 
