@@ -1,5 +1,13 @@
-# Pushing-Forward-Multi-Secret-Key-Homomorphic-Encryption-for-Private-Average-Aggregation
-GOLANG code of the implementations runtimes on the paper. The codes implement secure aggregation using two state of the art HE schemes: **BFV** & **CKKS**. The names of the folders are the following:
+<div align="center">
+
+# Pushing Forward Multi-Secret Key Homomorphic Encryption for Private Average Aggregation
+
+GOLANG codes of the implementations runtimes on the paper. The codes implement secure aggregation using two state of the art HE schemes: **BFV** & **CKKS**. 
+</div>
+
+---
+
+The names of the folders are the following:
 
 * **CKKS-MHE**
 * **BFV-MHE**
@@ -14,4 +22,4 @@ We recommend to check the [Lattigo](https://github.com/tuneinsight/lattigo) Libr
 xxx
 
 ## Contact
-To contact us, you can send an email to mmorona@gts.uvigo.es, apedrouzo@gts.uvigo.es or fperez@gts.uvigo.es
+To contact us, you can send an email to mmorona@gts.uvigo.es
