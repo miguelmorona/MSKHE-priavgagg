@@ -301,10 +301,10 @@ func main() {
 			P := genParties(priaggrings, ternarySamplerMontgomeryQ, NumParties)
 			l.Printf("\t\t\t||           - Generation of secret keys sk_i                   %12s                                             ||", elapsedSetupParty)
 
-			elapsedSetupParty_ri += runTimedParty(func() {
+			elapsedSetupParty_ri += runTimed(func() {
 				genSetupShare(priaggrings, uniformSamplerQ, P)
-			}, len(P))
-			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", elapsedSetupParty_ri)
+			})
+			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", time.Duration(2)*elapsedSetupParty_ri)
 			l.Printf("\t\t\t||                                                                                                                       ||")
 			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedSetupParty_ri+elapsedSetupParty)
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
