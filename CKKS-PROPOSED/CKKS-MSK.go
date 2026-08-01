@@ -780,7 +780,7 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 
 	// Initialize a timer to measure the decryption phase duration.
 	elapsedDecCloud = time.Duration(0)
-	elapsedDecCloud += runTimedParty(func() {
+	elapsedDecCloud += runTimed(func() {
 
 		//buff := aggring.ringQ.NewPoly()
 
@@ -805,7 +805,7 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 
 		}
 
-	}, len(P))
+	})
 
 	// Return the decrypted results.
 	return recShare
