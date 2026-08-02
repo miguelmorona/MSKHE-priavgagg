@@ -77,7 +77,7 @@ type parameters struct {
 
 var benchParameters = []parameters{
 	//----------------------------------------------------------------------------------------------------------------------//
-	{NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0, bench_Delta: 90, bench_eps: 80},
+	{NumParties: 8, n: 4, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 30},
 	//----------------------------------------------------------------------------------------------------------------------//
 }
 
@@ -207,7 +207,7 @@ func PolyToFloat64Slice(pol ring.Poly, r *ring.Ring) []float64 {
 
 func main() {
 
-	file, err := os.OpenFile("ckks-results-2.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)	
+	file, err := os.Create("ckks-results.txt")
 	check(err)
 	defer file.Close() 
 	l := log.New(file, "", 0)
@@ -263,7 +263,7 @@ func main() {
 		l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 		l.Printf("\t\t\t||   1.a. SETUP                                                                                                          ||")
 		l.Printf("\t\t\t||           - Number of parties involved in the process:  %2d                                                            ||", NumParties)
-		l.Printf("\t\t\t||           - Dimension of the model:                     %8d                                                      ||", 2*n*(1<<param.logN))
+		l.Printf("\t\t\t||           - Dimension of the model:                     %8d                                                      ||", n*(1<<param.logN))
 		l.Printf("\t\t\t||                                                                                                                       ||")
 		l.Printf("\t\t\t||   1.b. CRYPTOGRAPHIC PARAMETERS                                                                                       ||")
 		l.Printf("\t\t\t||           - Level of security:                          128 bits                                                      ||")
@@ -318,7 +318,7 @@ func main() {
 			})
 			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", time.Duration(2)*elapsedSetupParty_ri)
 			l.Printf("\t\t\t||                                                                                                                       ||")
-			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedSetupParty_ri+elapsedSetupParty)
+			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", time.Duration(2)*elapsedSetupParty_ri+elapsedSetupParty)
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   2. GENERATION OF INPUTS FOR VERIFICATION                                                                            ||")
 			aggexparray := genInputs(priaggrings, lowNormUniformQ, n, P, param) // The expected result is the aggregation of all the party models (aggexp = m_0 + m_1 + ... + m_{L-1})
@@ -439,12 +439,12 @@ func main() {
 
 			// ----------------------------------------------------------------------------------------------//
 
-			SetupMean += (elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
+			SetupMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
 			GenInputMean += (elapsedInputParty) / time.Duration(nexperiments)
 			EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 			AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 			DecMean += (elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
-			TotalMean += (elapsedSetupParty_ri + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
+			TotalMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
 
 			elapsedSetupParty_ri = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
@@ -780,7 +780,7 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 
 	// Initialize a timer to measure the decryption phase duration.
 	elapsedDecCloud = time.Duration(0)
-	elapsedDecCloud += runTimed(func() {
+	elapsedDecCloud += runTimedParty(func() {
 
 		//buff := aggring.ringQ.NewPoly()
 
@@ -805,7 +805,7 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 
 		}
 
-	})
+	}, len(P))
 
 	// Return the decrypted results.
 	return recShare
