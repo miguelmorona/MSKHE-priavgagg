@@ -203,7 +203,7 @@ func (lns *lowNormSampler) newPolyLowNorm(norm *big.Int) (pol ring.Poly) {
 
 func main() {
 
-	file, err := os.OpenFile("bfv-results.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)	
+	file, err := os.Create("bfv-results.txt")		
 	check(err)
 	defer file.Close() 
 	l := log.New(file, "", 0)
