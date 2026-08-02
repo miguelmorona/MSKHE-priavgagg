@@ -621,31 +621,32 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 
 	// Measure elapsed time for encryption phase across all parties
 	elapsedEncryptParty = time.Duration(0)
-	elapsedEncryptParty += runTimedParty(func() {
 
-		tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
+	tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
 
-		// Initialize arrays to hold encrypted inputs and partial decryptions for each party
-		encInputs = make([][]ring.Poly, len(P))
-		partialDec = make([][]ring.Poly, len(P))
-		for i := 0; i < len(P); i++ {
-			encInputs[i] = make([]ring.Poly, n)
-			partialDec[i] = make([]ring.Poly, n)
-		}
+	// Initialize arrays to hold encrypted inputs and partial decryptions for each party
+	encInputs = make([][]ring.Poly, len(P))
+	partialDec = make([][]ring.Poly, len(P))
+	for i := 0; i < len(P); i++ {
+		encInputs[i] = make([]ring.Poly, n)
+		partialDec[i] = make([]ring.Poly, n)
+	}
 
-		FirstNoise := make([][]ring.Poly, len(P))
-		SecondNoise := make([][]ring.Poly, len(P))
-		for i := 0; i < len(P); i++ {
-			FirstNoise[i] = make([]ring.Poly, n)
-			SecondNoise[i] = make([]ring.Poly, n)
-		}
+	FirstNoise := make([][]ring.Poly, len(P))
+	SecondNoise := make([][]ring.Poly, len(P))
+	for i := 0; i < len(P); i++ {
+		FirstNoise[i] = make([]ring.Poly, n)
+		SecondNoise[i] = make([]ring.Poly, n)
+	}
 
-		// Step 1: Loop over each input index "j" to sample random polynomials "a" for encryption. Sample different "a" per each consecutive correlated encryption (a total of "n")
-		for j := 0; j < n; j++ {
+	// Step 1: Loop over each input index "j" to sample random polynomials "a" for encryption. Sample different "a" per each consecutive correlated encryption (a total of "n")
+	for j := 0; j < n; j++ {
 
-			// Encryption: a*(si + ri) + e + Δ*m[i]
-			a := uniformSamplerQ.ReadNew() // Sample a uniform random polynomial "a"
-			aggring.ringQ.NTT(a, a)        // Convert "a" to NTT domain for efficient operations
+		// Encryption: a*(si + ri) + e + Δ*m[i]
+		a := uniformSamplerQ.ReadNew() // Sample a uniform random polynomial "a"
+		aggring.ringQ.NTT(a, a)        // Convert "a" to NTT domain for efficient operations
+
+		elapsedEncryptParty += runTimedParty(func() {
 
 			for i := 0; i < len(P); i++ { // Loop over each party to encrypt their inputs
 				// c = e
@@ -694,8 +695,8 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 				aggring.ringQ.Sub(partialDec[i][j], SecondNoise[i][j], partialDec[i][j])
 
 			}
-		}
-	}, len(P))
+		}, len(P))
+	}
 
 	// Output: Return the encrypted inputs and the partial decryption shares for each party
 	return encInputs, partialDec
