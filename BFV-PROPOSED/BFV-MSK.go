@@ -77,15 +77,15 @@ type parameters struct {
 var benchParameters = []parameters{
 
 	//----------------------------------------------------------------------------------------------//
-	{NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0},
+	{NumParties: 32, n: 4, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
 	//----------------------------------------------------------------------------------------------//
 }
 
 //-----------------------------------------------------------------------------------------//
 
-//Set 1: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
+//Set 1: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0}, //n:4
 //Set 2: -
-//Set 3: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0},
+//Set 3: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0}, //n:2
 //Set 4: -
 
 //-----------------------------------------------------------------------------------------//
@@ -308,7 +308,7 @@ func main() {
 			})
 			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", time.Duration(2)*elapsedSetupParty_ri)
 			l.Printf("\t\t\t||                                                                                                                       ||")
-			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedSetupParty_ri+elapsedSetupParty)
+			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", time.Duration(2)*elapsedSetupParty_ri+elapsedSetupParty)
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   2. GENERATION OF INPUTS FOR VERIFICATION                                                                            ||")
 			aggexparray := genInputs(priaggrings, lowNormUniformQ, n, P, param) // The expected result is the aggregation of all the party models (aggexp = m_0 + m_1 + ... + m_{L-1})
@@ -414,12 +414,12 @@ func main() {
 				l.Printf("\t\t\t||=======================================================================================================================||")
 			}
 
-			SetupMean += (elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
+			SetupMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
 			GenInputMean += (elapsedInputParty) / time.Duration(nexperiments)
 			EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 			AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 			DecMean += (elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
-			TotalMean += (elapsedSetupParty_ri + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
+			TotalMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
 
 			elapsedSetupParty_ri = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
