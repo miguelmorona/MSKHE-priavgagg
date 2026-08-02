@@ -94,8 +94,6 @@ var elapsedEncryptCloud time.Duration
 var elapsedSetupParty time.Duration
 var elapsedCKGCloud time.Duration
 var elapsedCKGParty time.Duration
-var elapsedRKGCloud time.Duration
-var elapsedRKGParty time.Duration
 var elapsedPCKSCloud time.Duration
 var elapsedPCKSParty time.Duration
 var elapsedEvalCloudCPU time.Duration
@@ -122,7 +120,7 @@ func main() {
 
 	var err error
 
-	file, err := os.OpenFile("bfv-results-flta.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)	
+	file, err := os.Create("bfv-results-flta.txt")
 	check(err)
 	defer file.Close() 
 	l := log.New(file, "", 0)
@@ -130,7 +128,7 @@ func main() {
 	//l := log.New(os.Stderr, "", 0)
 
 	// Default number of input parties. NumParties
-	N := 32	
+	N := 32 	
 
 	// If at least one argument is provided, attempt to parse the first argument as an integer
 	// to redefine the number of parties (N).
@@ -150,7 +148,7 @@ func main() {
 	}
 
 	// Default number of model parameters
-	NumModelParameters := 16384000 // This equals 2^13*2000
+	NumModelParameters := 16384000 // This equals 2^13*2000 // 16384000 // 8192
 
 	// If a third argument is provided, attempt to parse it as an integer
 	// to redefine the number of model parameters.
@@ -200,7 +198,10 @@ func main() {
 		// 1) Collective public key generation: Perform collective key generation (CKG) to compute a public key shared by all parties.
 		pk := ckgphase(params, crs, P)
 
-		l.Printf("\tSetup done (cloud: %s, party: %s). Total: %s\n", elapsedRKGCloud+elapsedCKGCloud, elapsedRKGParty+elapsedCKGParty+elapsedSetupParty, elapsedRKGCloud+elapsedCKGCloud+elapsedRKGParty+elapsedCKGParty+elapsedSetupParty)
+		l.Printf("\tCKG done (cloud: %s, party: %s)\n", elapsedCKGCloud, elapsedCKGParty)
+
+
+		l.Printf("\tSetup done (cloud: %s, party: %s). Total: %s\n", elapsedCKGCloud, elapsedCKGParty+elapsedSetupParty, elapsedCKGCloud+elapsedCKGParty+elapsedSetupParty)
 
 		// 2) Encryption phase: Each party encrypts their inputs using the shared public key.
 		encInputs := encPhase(params, P, pk, encoder)
@@ -263,11 +264,11 @@ func main() {
 		l.Println("\tcorrect")
 		l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty)
 
-		SetupMean += (elapsedRKGCloud + elapsedCKGCloud + elapsedRKGParty + elapsedCKGParty + elapsedSetupParty) / time.Duration(nexperiments)
+		SetupMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty) / time.Duration(nexperiments)
 		EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 		AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
-		TotalMean += (elapsedRKGCloud + elapsedCKGCloud + elapsedRKGParty + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
+		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
 
 		elapsedSetupParty = time.Duration(0)
 		elapsedEncryptCloud = time.Duration(0)
@@ -405,11 +406,11 @@ func ckgphase(params bgv.Parameters, crs sampling.PRNG, P []*party) *rlwe.Public
 		pi.ckgShare = ckg.AllocateShare()
 	}
 
-	// Sample the crp from the crs
-	crp := ckg.SampleCRP(crs)
-
 	// Record the time taken for the party-side share generation phase
 	elapsedCKGParty = runTimedParty(func() {
+
+		// Sample the crp from the crs
+		crp := ckg.SampleCRP(crs)
 
 		// Each party generates its own share of the public key based on its secret key and the CRP
 		for _, pi := range P {
