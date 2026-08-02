@@ -77,7 +77,7 @@ type parameters struct {
 var benchParameters = []parameters{
 
 	//----------------------------------------------------------------------------------------------//
-	{NumParties: 32, n: 4, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
+	{NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
 	//----------------------------------------------------------------------------------------------//
 }
 
@@ -203,7 +203,7 @@ func (lns *lowNormSampler) newPolyLowNorm(norm *big.Int) (pol ring.Poly) {
 
 func main() {
 
-	file, err := os.Create("bfv-results.txt")		
+	file, err := os.Create("bfv-results.txt")	
 	check(err)
 	defer file.Close() 
 	l := log.New(file, "", 0)
