@@ -77,7 +77,7 @@ type parameters struct {
 
 var benchParameters = []parameters{
 	//----------------------------------------------------------------------------------------------------------------------//
-	{NumParties: 8, n: 4, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 30},
+	{NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 30},
 	//----------------------------------------------------------------------------------------------------------------------//
 }
 
