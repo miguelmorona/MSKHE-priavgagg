@@ -77,7 +77,7 @@ type parameters struct {
 var benchParameters = []parameters{
 
 	//----------------------------------------------------------------------------------------------//
-	{NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
+	{NumParties: 16, n: 4, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
 	//----------------------------------------------------------------------------------------------//
 }
 
@@ -597,84 +597,87 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 
 	// Measure elapsed time for encryption phase across all parties
 	elapsedEncryptParty = time.Duration(0)
-	elapsedEncryptParty += runTimedParty(func() {
 
-		// Temporary buffers for polynomial operations
-		//buff := aggring.ringQ.NewPoly() // Buffer for intermediate storage
-		tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
+	// Temporary buffers for polynomial operations
+	//buff := aggring.ringQ.NewPoly() // Buffer for intermediate storage
+	tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
 
-		// Initialize arrays to hold encrypted inputs and partial decryptions for each party
-		encInputs = make([][]ring.Poly, len(P))
-		partialDec = make([][]ring.Poly, len(P))
-		for i := 0; i < len(P); i++ {
-			encInputs[i] = make([]ring.Poly, n)
-			partialDec[i] = make([]ring.Poly, n)
-		}
+	// Initialize arrays to hold encrypted inputs and partial decryptions for each party
+	encInputs = make([][]ring.Poly, len(P))
+	partialDec = make([][]ring.Poly, len(P))
+	for i := 0; i < len(P); i++ {
+		encInputs[i] = make([]ring.Poly, n)
+		partialDec[i] = make([]ring.Poly, n)
+	}
 
-		FirstNoise := make([][]ring.Poly, len(P))
-		SecondNoise := make([][]ring.Poly, len(P))
-		for i := 0; i < len(P); i++ {
-			FirstNoise[i] = make([]ring.Poly, n)
-			SecondNoise[i] = make([]ring.Poly, n)
-		}
+	FirstNoise := make([][]ring.Poly, len(P))
+	SecondNoise := make([][]ring.Poly, len(P))
+	for i := 0; i < len(P); i++ {
+		FirstNoise[i] = make([]ring.Poly, n)
+		SecondNoise[i] = make([]ring.Poly, n)
+	}
 
-		// Step 1: Loop over each input index "j" to sample random polynomials "a" for encryption. Sample different "a" per each consecutive correlated encryption (a total of "n")
-		for j := 0; j < n; j++ {
+	// Step 1: Loop over each input index "j" to sample random polynomials "a" for encryption. Sample different "a" per each consecutive correlated encryption (a total of "n")
+	for j := 0; j < n; j++ {
+
+			elapsedEncryptParty += runTimedParty(func() {
+
 
 			// Encryption: a*(si + ri) + e + QDivP*m[i]
 			a := uniformSamplerQ.ReadNew() // Sample a uniform random polynomial "a"
 			aggring.ringQ.NTT(a, a)        // Convert "a" to NTT domain for efficient operations
 
-			for i := 0; i < len(P); i++ { // Loop over each party to encrypt their inputs
-				// c = e
-				encInputs[i][j] = aggring.ringQ.NewPoly()
-				gaussianSamplerQ.AtLevel(aggring.ringQ.MaxLevel()).ReadAndAdd(encInputs[i][j]) // Generate Gaussian noise "e"
+				for i := 0; i < len(P); i++ { // Loop over each party to encrypt their inputs
+					// c = e
+					encInputs[i][j] = aggring.ringQ.NewPoly()
+					gaussianSamplerQ.AtLevel(aggring.ringQ.MaxLevel()).ReadAndAdd(encInputs[i][j]) // Generate Gaussian noise "e"
 
-				// c = NTT(e)
-				aggring.ringQ.NTT(encInputs[i][j], encInputs[i][j]) // Convert noise to NTT domain
+					// c = NTT(e)
+					aggring.ringQ.NTT(encInputs[i][j], encInputs[i][j]) // Convert noise to NTT domain
 
-				//---------------------Noises---------------------//
+					//---------------------Noises---------------------//
 
-				// Copy the noise e to FirstNoise[i][j] for later use
-				FirstNoise[i][j] = aggring.ringQ.NewPoly()
-				FirstNoise[i][j].Copy(encInputs[i][j])
+					// Copy the noise e to FirstNoise[i][j] for later use
+					FirstNoise[i][j] = aggring.ringQ.NewPoly()
+					FirstNoise[i][j].Copy(encInputs[i][j])
 
-				SecondNoise[i][j] = aggring.ringQ.NewPoly()
-				gaussianSamplerQ.AtLevel(aggring.ringQ.MaxLevel()).ReadAndAdd(SecondNoise[i][j]) // Generate Gaussian noise "e"
+					SecondNoise[i][j] = aggring.ringQ.NewPoly()
+					gaussianSamplerQ.AtLevel(aggring.ringQ.MaxLevel()).ReadAndAdd(SecondNoise[i][j]) // Generate Gaussian noise "e"
 
-				// c = NTT(e)
-				aggring.ringQ.NTT(SecondNoise[i][j], SecondNoise[i][j]) // Convert noise e' to NTT domain
+					// c = NTT(e)
+					aggring.ringQ.NTT(SecondNoise[i][j], SecondNoise[i][j]) // Convert noise e' to NTT domain
 
-				//----------------Noises finish------------------//
+					//----------------Noises finish------------------//
 
-				// tmp = NTT(m * Q/P) for scaling
-				aggring.ringQ.MulScalarBigint(P[i].input[j], aggring.QDivP, tmp)
+					// tmp = NTT(m * Q/P) for scaling
+					aggring.ringQ.MulScalarBigint(P[i].input[j], aggring.QDivP, tmp)
 
-				// c = NTT(m * (Q/P) + e)
-				aggring.ringQ.Add(encInputs[i][j], tmp, encInputs[i][j]) // Add scaled message to noise
+					// c = NTT(m * (Q/P) + e)
+					aggring.ringQ.Add(encInputs[i][j], tmp, encInputs[i][j]) // Add scaled message to noise
 
-				// NTT(pdi) = NTT(a)*NTT(MF(ski))) = NTT(a*ski)
-				partialDec[i][j] = aggring.ringQ.NewPoly()
-				aggring.ringQ.MulCoeffsMontgomery(P[i].sk, a, partialDec[i][j])
+					// NTT(pdi) = NTT(a)*NTT(MF(ski))) = NTT(a*ski)
+					partialDec[i][j] = aggring.ringQ.NewPoly()
+					aggring.ringQ.MulCoeffsMontgomery(P[i].sk, a, partialDec[i][j])
 
-				//ringQ.MForm(pd[i], pd[i])
-				// c = NTT(m * (Q/P) + e) + NTT(a) * MForm(NTT(ri))
-				// c = NTT(m * (Q/P) + e + a*ri)
-				//ringQ.MForm(c[i], c[i])
-				aggring.ringQ.MulCoeffsMontgomery(a, P[i].r, tmp) // Multiply "a" with party's randomness "r" and add to ciphertext
-				aggring.ringQ.Add(tmp, encInputs[i][j], encInputs[i][j])
+					//ringQ.MForm(pd[i], pd[i])
+					// c = NTT(m * (Q/P) + e) + NTT(a) * MForm(NTT(ri))
+					// c = NTT(m * (Q/P) + e + a*ri)
+					//ringQ.MForm(c[i], c[i])
+					aggring.ringQ.MulCoeffsMontgomery(a, P[i].r, tmp) // Multiply "a" with party's randomness "r" and add to ciphertext
+					aggring.ringQ.Add(tmp, encInputs[i][j], encInputs[i][j])
 
-				// c = NTT(m * (Q/P) + e + a*ri + a*ski)
-				aggring.ringQ.Add(encInputs[i][j], partialDec[i][j], encInputs[i][j]) // Complete encryption: add a*ski
+					// c = NTT(m * (Q/P) + e + a*ri + a*ski)
+					aggring.ringQ.Add(encInputs[i][j], partialDec[i][j], encInputs[i][j]) // Complete encryption: add a*ski
 
-				//----------------partialdec = NTT(ask + e - e') ----------------------------------------------------//
+					//----------------partialdec = NTT(ask + e - e') ----------------------------------------------------//
 
-				aggring.ringQ.Add(partialDec[i][j], FirstNoise[i][j], partialDec[i][j])
-				aggring.ringQ.Sub(partialDec[i][j], SecondNoise[i][j], partialDec[i][j])
+					aggring.ringQ.Add(partialDec[i][j], FirstNoise[i][j], partialDec[i][j])
+					aggring.ringQ.Sub(partialDec[i][j], SecondNoise[i][j], partialDec[i][j])
 
-			}
-		}
-	}, len(P))
+				}
+			}, len(P))
+	}
+	
 
 	// Output: Return the encrypted inputs and the partial decryption shares for each party
 	return encInputs, partialDec
