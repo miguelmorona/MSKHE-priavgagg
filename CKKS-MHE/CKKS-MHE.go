@@ -278,7 +278,7 @@ func main() {
 				l.Printf("\tincorrect\n first error in position [%d]\n", i)
 				l.Printf("Max Error: %v", MaxDiff)
 				l.Printf("Epsilon: %v", math.Exp2(float64(-20)))
-				l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty)
+				l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud+elapsedDecodeCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty+elapsedDecodeParty)
 				return
 			}
 		}
@@ -286,13 +286,13 @@ func main() {
 		l.Println("\tcorrect")
 		l.Printf("Max Error: %v", MaxDiff)
 		l.Printf("Epsilon: %v", math.Exp2(float64(-20)))
-		l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty)
+		l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud+elapsedDecodeCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty+elapsedDecodeParty)
 
 		SetupMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty) / time.Duration(nexperiments)
 		EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 		AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
-		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
+		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 
 		elapsedSetupParty = time.Duration(0)
 		elapsedEncryptCloud = time.Duration(0)
