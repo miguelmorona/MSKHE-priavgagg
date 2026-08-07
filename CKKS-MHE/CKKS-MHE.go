@@ -1,4 +1,4 @@
-// Copyright 2024 Alberto Pedrouzo Ulloa
+// Copyright 2026 Miguel Morona-Mínguez, Alberto Pedrouzo-Ulloa
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@ import (
 )
 
 // ----------------------------------------------------------------------------------------------//
-// For more details see the report discussing the implementation runtimes of aggregation with baseline BFV
+// For more details see the report discussing the implementation runtimes of aggregation with baseline BFV and the BFVbaselineAgg folder in "https://github.com/apedrouzoulloa/mkagg"
 // ----------------------------------------------------------------------------------------------//
 
 // ----------------------------------------------------------------------------------------------//
 // CKKS-MHE.go can be run as: go run ./CKKS-MHE.go NumParties Goroutines NumModelParameters
-// - By default: NumParties = 32, Goroutines = 1, NumModelParameters = 1048576
+// - By default: NumParties = 32, Goroutines = 1, NumModelParameters = 8192000
 //
 // Cryptosystem parameters are defined in "paramsDef"
 // - By default:
@@ -63,11 +63,11 @@ func runTimed(f func()) time.Duration {
 	return time.Since(start)
 }
 
-// To measure time execution of the same operations which are simultaneously done in "parallel" by N parties
-func runTimedParty(f func(), N int) time.Duration {
+// To measure time execution of the same operations which are simultaneously done in "parallel" by L parties
+func runTimedParty(f func(), L int) time.Duration {
 	start := time.Now()
 	f()
-	return time.Duration(time.Since(start).Nanoseconds() / int64(N))
+	return time.Duration(time.Since(start).Nanoseconds() / int64(L))
 }
 
 // party: defines the inputs and private information of party P_i
@@ -103,6 +103,9 @@ var elapsedDecParty time.Duration
 var elapsedHomKeySwitchCloud time.Duration
 var elapsedHomKeySwitchParty time.Duration
 
+var elapsedDecodeParty time.Duration
+var elapsedDecodeCloud time.Duration
+
 var SetupMean time.Duration
 var GenInputMean time.Duration
 var EncPhaseMean time.Duration
@@ -125,13 +128,13 @@ func main() {
 	//l := log.New(os.Stderr, "", 0)
 
 	// Default number of input parties. NumParties
-	N := 32
+	L := 32
 	
 
 	// If at least one argument is provided, attempt to parse the first argument as an integer
-	// to redefine the number of parties (N).
+	// to redefine the number of parties (L).
 	if len(os.Args[1:]) >= 1 {
-		N, err = strconv.Atoi(os.Args[1])
+		L, err = strconv.Atoi(os.Args[1])
 		check(err)
 	}
 
@@ -146,7 +149,7 @@ func main() {
 	}
 
 	// Default number of model parameters
-	NumModelParameters := 8192000 // This equals 2^13 * 1000 (2000ctx as maxslots is 2^12) (As there is only aggregation, we can suppone a conjugate invariant ring) //1024 total
+	NumModelParameters := 1000 //8192000 // This equals 2^13 * 1000 (2000ctx as maxslots is 2^12) (As there is only aggregation, we can suppone a conjugate invariant ring) //1024 total
 
 	// If a third argument is provided, attempt to parse it as an integer
 	// to redefine the number of model parameters.
@@ -186,7 +189,7 @@ func main() {
 		tsk, tpk := rlwe.NewKeyGenerator(params).GenKeyPairNew()
 
 		// Create each party and allocate the memory for all the shares needed in the protocol
-		P := genparties(params, N)
+		P := genparties(params, L)
 		l.Println("> Initialization of Parties")
 
 		// Start the process, only 1 aggregation round is executed
@@ -199,19 +202,19 @@ func main() {
 		l.Printf("> Input generation\n \tNum parties: %d, PaddedwithZeros-NumModelParameters: %d\n", len(P), len(expRes))
 
 		// 1) Collective public key generation: Perform collective key generation (CKG) to compute a public key shared by all parties.
-		pk := ckgphase(params, crs, P)
+		pk := ckgphase(params, crs, P, l)
 
 		l.Printf("\tSetup done (cloud: %s, party: %s). Total: %s\n", elapsedCKGCloud, elapsedCKGParty+elapsedSetupParty, elapsedCKGCloud+elapsedCKGParty+elapsedSetupParty)
 
 		// 2) Encryption phase: Each party encrypts their inputs using the shared public key.
-		encInputs := encPhase(params, P, pk, encoder)
+		encInputs := encPhase(params, P, pk, encoder, l)
 
 		// 3) Evaluation phase: Perform homomorphic aggregation on the encrypted inputs.
-		encRes := evalPhase(params, NGoRoutine, encInputs)
+		encRes := evalPhase(params, NGoRoutine, encInputs, l)
 		encInputs = nil
 
 		// 4) Public Collective Key Switching (PCKS): Parties collaboratively switch the encrypted result to the target secret key.
-		encOut := pcksPhase(params, tpk, encRes, P)
+		encOut := pcksPhase(params, tpk, encRes, P, l)
 		encRes = nil
 		//P = nil
 		l.Printf("Size of result\t: Number of ciphertexts: %d ciphertexts\n", len(encOut))
@@ -230,30 +233,36 @@ func main() {
 		}
 
 		// Only 1 decryption is run, but would be done by all parties who know the tsk. So we use runTimed instead of runTimedParty to measure the runtime
-		elapsedDecParty = runTimedParty(func() {
+		elapsedDecParty = runTimed(func() {
 			for i := range encOut {
 				decryptor.Decrypt(encOut[i], ptres[i]) // Decrypt each ciphertext into plaintext
 				encOut[i] = nil
 			}
-		}, len(P))
+		})
 
 		elapsedDecCloud = time.Duration(0)
 		l.Printf("\tdone (cloud: %s, party: %s)\n", elapsedDecCloud, elapsedDecParty)
-
-		l.Println("> Result:")
+		
+		// Decode phase: convert plaintext type into float.
+		l.Println("> Result and decode phase:")
 
 		// Check the result
 		// Decode plaintexts to retrieve the final result as a list of floats.
 		res := make([]float64, len(expRes))
 
 		partialRes := make([]float64, params.MaxSlots()) // Temporary buffer for decoding.
+		
+		elapsedDecodeParty = runTimed(func() {
 		for i := range ptres {
 			check(encoder.Decode(ptres[i], partialRes)) // Decode plaintext to float64 values.
 			ptres[i] = nil
 			for j := range partialRes {
 				res[(i*len(partialRes) + j)] = partialRes[j] // Copy values to the final result array.
 			}
-		}
+		}})
+		
+		elapsedDecodeCloud = time.Duration(0)
+		l.Printf("\tdone (cloud: %s, party: %s)\n", elapsedDecodeCloud, elapsedDecodeParty)		
 
 		MaxDiff := 0.0
 
@@ -282,7 +291,7 @@ func main() {
 		SetupMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty) / time.Duration(nexperiments)
 		EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 		AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
-		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
+		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
 
 		elapsedSetupParty = time.Duration(0)
@@ -294,6 +303,8 @@ func main() {
 		elapsedDecParty = time.Duration(0)
 		elapsedPCKSCloud = time.Duration(0)
 		elapsedPCKSParty = time.Duration(0)
+		elapsedDecodeCloud = time.Duration(0)
+		elapsedDecodeParty = time.Duration(0)		
 
 	}
 
@@ -409,9 +420,9 @@ func genInputs(params ckks.Parameters, P []*party, NumModelParameters int, Bound
 // Outputs:
 // - Returns the aggregated public key generated from all party shares
 
-func ckgphase(params ckks.Parameters, crs sampling.PRNG, P []*party) *rlwe.PublicKey {
+func ckgphase(params ckks.Parameters, crs sampling.PRNG, P []*party, l *log.Logger) *rlwe.PublicKey {
 
-	l := log.New(os.Stderr, "", 0)
+	//l := log.New(os.Stderr, "", 0)
 
 	// Log the start of the CKG phase
 	l.Println("> CKG Phase")
@@ -427,11 +438,13 @@ func ckgphase(params ckks.Parameters, crs sampling.PRNG, P []*party) *rlwe.Publi
 		pi.ckgShare = ckg.AllocateShare()
 	}
 
+	var crp multiparty.PublicKeyGenCRP // added by APU
+
 	// Record the time taken for the party-side share generation phase
 	elapsedCKGParty = runTimedParty(func() {
 
 		// Sample the crp from the crs
-		crp := ckg.SampleCRP(crs)
+		crp = ckg.SampleCRP(crs)
 
 		// Each party generates its own share of the public key based on its secret key and the CRP
 		for _, pi := range P {
@@ -479,9 +492,9 @@ func ckgphase(params ckks.Parameters, crs sampling.PRNG, P []*party) *rlwe.Publi
 // Outputs:
 // - encInputs: A 2D slice of ciphertexts, where each party's encrypted inputs are stored in ciphertexts
 
-func encPhase(params ckks.Parameters, P []*party, pk *rlwe.PublicKey, encoder *ckks.Encoder) (encInputs [][]*rlwe.Ciphertext) {
+func encPhase(params ckks.Parameters, P []*party, pk *rlwe.PublicKey, encoder *ckks.Encoder, l *log.Logger) (encInputs [][]*rlwe.Ciphertext) {
 
-	l := log.New(os.Stderr, "", 0)
+	//l := log.New(os.Stderr, "", 0)
 
 	// Determine the number of ciphertexts each party needs to generate based on the number of model parameters
 	NumCiphertextsPerParty := int(math.Ceil(float64(P[0].PaddedNumModelParameters) / float64(params.MaxSlots())))
@@ -545,9 +558,9 @@ func encPhase(params ckks.Parameters, P []*party, pk *rlwe.PublicKey, encoder *c
 // Outputs:
 // - encRes: A slice of ciphertexts representing the final evaluation result
 
-func evalPhase(params ckks.Parameters, NGoRoutine int, encInputs [][]*rlwe.Ciphertext) (encRes []*rlwe.Ciphertext) {
+func evalPhase(params ckks.Parameters, NGoRoutine int, encInputs [][]*rlwe.Ciphertext, l *log.Logger) (encRes []*rlwe.Ciphertext) {
 
-	l := log.New(os.Stderr, "", 0)
+	//l := log.New(os.Stderr, "", 0)
 
 	// Determine the number of layers needed for the evaluation, based on the number of inputs
 	SizeEncLayers := make([]int, 0)
@@ -664,9 +677,9 @@ func evalPhase(params ckks.Parameters, NGoRoutine int, encInputs [][]*rlwe.Ciphe
 // Outputs:
 // - encOut: A slice of ciphertexts after the key switching has been applied
 
-func pcksPhase(params ckks.Parameters, tpk *rlwe.PublicKey, encRes []*rlwe.Ciphertext, P []*party) (encOut []*rlwe.Ciphertext) {
+func pcksPhase(params ckks.Parameters, tpk *rlwe.PublicKey, encRes []*rlwe.Ciphertext, P []*party, l *log.Logger) (encOut []*rlwe.Ciphertext) {
 
-	l := log.New(os.Stderr, "", 0)
+	//l := log.New(os.Stderr, "", 0)
 
 	// To reduce the use of memory: only two pcksShare and pcksCombined components are used. In practice, both should be an array of size NumParties and pcksShare should change for each party
 
