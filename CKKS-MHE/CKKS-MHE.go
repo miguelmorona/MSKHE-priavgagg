@@ -149,7 +149,7 @@ func main() {
 	}
 
 	// Default number of model parameters
-	NumModelParameters := 1000 //8192000 // This equals 2^13 * 1000 (2000ctx as maxslots is 2^12) (As there is only aggregation, we can suppone a conjugate invariant ring) //1024 total
+	NumModelParameters := 8192000 // This equals 2^13 * 1000 (2000ctx as maxslots is 2^12) (As there is only aggregation, we can suppone a conjugate invariant ring) //1024 total
 
 	// If a third argument is provided, attempt to parse it as an integer
 	// to redefine the number of model parameters.
@@ -183,7 +183,8 @@ func main() {
 		check(err)
 
 		// Initialize the encoder for encoding and decoding plaintexts
-		encoder := ckks.NewEncoder(params)
+		// 53-bit encoder precision is sufficient since the input values are float64, while the larger CKKS scale is kept to preserve precision after smudging noise.
+		encoder := ckks.NewEncoder(params, 53) // Up to 53 bits, Lattigo uses fast float64/complex128 encoding.
 
 		// Generate target secret and public key pair for testing decryption and correctness
 		tsk, tpk := rlwe.NewKeyGenerator(params).GenKeyPairNew()
@@ -274,7 +275,7 @@ func main() {
 				MaxDiff = math.Abs(expRes[i] - res[i])
 			}
 			if math.Abs(expRes[i]-res[i]) > math.Exp2(float64(-20)) { //Epsilon = 2^-20
-				// Log error details if there is a mismatch.
+				// Log error detfails if there is a mismatch.
 				l.Printf("\tincorrect\n first error in position [%d]\n", i)
 				l.Printf("Max Error: %v", MaxDiff)
 				l.Printf("Epsilon: %v", math.Exp2(float64(-20)))
@@ -294,6 +295,8 @@ func main() {
 		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 
+		elapsedCKGCloud = time.Duration(0)
+		elapsedCKGParty = time.Duration(0)
 		elapsedSetupParty = time.Duration(0)
 		elapsedEncryptCloud = time.Duration(0)
 		elapsedEncryptParty = time.Duration(0)
@@ -438,7 +441,7 @@ func ckgphase(params ckks.Parameters, crs sampling.PRNG, P []*party, l *log.Logg
 		pi.ckgShare = ckg.AllocateShare()
 	}
 
-	var crp multiparty.PublicKeyGenCRP // added by APU
+	var crp multiparty.PublicKeyGenCRP // Declare the CRP for public key generation.
 
 	// Record the time taken for the party-side share generation phase
 	elapsedCKGParty = runTimedParty(func() {
@@ -523,16 +526,19 @@ func encPhase(params ckks.Parameters, P []*party, pk *rlwe.PublicKey, encoder *c
 
 	// Create a plaintext object and an array to hold the input values for encryption
 	pt := ckks.NewPlaintext(params, params.MaxLevel())
-	elapsedEncryptParty = runTimedParty(func() {
+
 		for i, pi := range P {
 			for k := 0; k < NumCiphertextsPerParty; k++ {
-				//encoder.Encode(EmbedFloat64SliceToComplex(pi.input[(k*params.N()):((k+1)*params.N())]), pt) // es uno menos en la segunda parte porque go indexa [0:n] como los valores 0, 2, ..., n - 1
-				check(encoder.Encode(pi.input[(k*params.MaxSlots()):((k+1)*params.MaxSlots())], pt)) // Encode the input into the plaintext
-				check(encryptor.Encrypt(pt, encInputs[i][k]))                                        // Encrypt the plaintext and store the ciphertext
+			//encoder.Encode(EmbedFloat64SliceToComplex(pi.input[(k*params.N()):((k+1)*params.N())]), pt) // es uno menos en la segunda parte porque go indexa [0:n] como los valores 0, 2, ..., n - 1
+			
+				elapsedEncryptParty += runTimedParty(func() {
+					check(encoder.Encode(pi.input[(k*params.MaxSlots()):((k+1)*params.MaxSlots())], pt)) // Encode the input into the plaintext
+					check(encryptor.Encrypt(pt, encInputs[i][k]))                                        // Encrypt the plaintext and store the ciphertext
+				}, len(P))
+				
 			}
-
 		}
-	}, len(P))
+
 
 	elapsedEncryptCloud = time.Duration(0)
 	l.Printf("\tdone (cloud: %s, party: %s)\n", elapsedEncryptCloud, elapsedEncryptParty)
@@ -578,12 +584,15 @@ func evalPhase(params ckks.Parameters, NGoRoutine int, encInputs [][]*rlwe.Ciphe
 	workers := &sync.WaitGroup{}
 	workers.Add(NGoRoutine)
 
+	// Lattigo v6.2.0 supports concurrent calls to the same evaluator instance.
+	evaluator := ckks.NewEvaluator(params, nil)
+
 	// Launch Go routines to process tasks in parallel
 	for i := 1; i <= NGoRoutine; i++ {
 		go func(i int) {
 
 			// Un evaluador independiente para esta goroutine
-			evaluator := ckks.NewEvaluator(params, nil)
+			// evaluator := ckks.NewEvaluator(params, nil) // CKKS evaluator initialization is more expensive than BFV evaluator initialization.
 
 			for task := range tasks {
 				task.elapsedmultTask = runTimed(func() {
