@@ -151,7 +151,7 @@ func main() {
 	}
 
 	// Default number of model parameters
-	NumModelParameters := 2000 //16384000 // This equals 2^13*2000 // 16384000 // 8192
+	NumModelParameters := 16384000 // This equals 2^13*2000 // 16384000 // 8192
 
 	// If a third argument is provided, attempt to parse it as an integer
 	// to redefine the number of model parameters.
@@ -279,6 +279,9 @@ func main() {
 		DecMean += (elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 		TotalMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty + elapsedEncryptCloud + elapsedEncryptParty + elapsedEvalCloud + elapsedEvalParty + elapsedPCKSCloud + elapsedPCKSParty + elapsedDecCloud + elapsedDecParty + elapsedDecodeCloud + elapsedDecodeParty) / time.Duration(nexperiments)
 
+		
+		elapsedCKGCloud = time.Duration(0)
+		elapsedCKGParty = time.Duration(0)
 		elapsedSetupParty = time.Duration(0)
 		elapsedEncryptCloud = time.Duration(0)
 		elapsedEncryptParty = time.Duration(0)
@@ -417,7 +420,7 @@ func ckgphase(params bgv.Parameters, crs sampling.PRNG, P []*party, l *log.Logge
 		pi.ckgShare = ckg.AllocateShare()
 	}
 
-	var crp multiparty.PublicKeyGenCRP // added by APU
+	var crp multiparty.PublicKeyGenCRP // Declare the CRP for public key generation.
 
 	// Record the time taken for the party-side share generation phase
 	elapsedCKGParty = runTimedParty(func() {
@@ -573,12 +576,15 @@ func evalPhase(params bgv.Parameters, NGoRoutine int, encInputs [][]*rlwe.Cipher
 	workers := &sync.WaitGroup{}
 	workers.Add(NGoRoutine)
 
+	// Lattigo v6.2.0 supports concurrent calls to the same evaluator instance.
+	evaluator := bgv.NewEvaluator(params, nil)
+
 	// Launch Go routines to process tasks in parallel
 	for i := 1; i <= NGoRoutine; i++ {
 		go func(i int) {
 
 			// Un evaluador independiente para esta goroutine
-			evaluator := bgv.NewEvaluator(params, nil)
+			// evaluator := bgv.NewEvaluator(params, nil) // CKKS evaluator initialization is more expensive than BFV evaluator initialization.
 
 			for task := range tasks {
 				task.elapsedmultTask = runTimed(func() {
