@@ -293,7 +293,7 @@ func main() {
 			// Initialize low-norm sampler for generating low-norm polynomials in ringQ
 			lowNormUniformQ := newLowNormSampler(ringQ)
 
-			l.Printf("\t\t\t||   1. GENERATION OF INPUT PARTIES AND KEYS:                                                                          ||")
+			l.Printf("\t\t\t||   1.c. GENERATION OF INPUT PARTIES AND KEYS:                                                                          ||")
 
 			elapsedInput = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
