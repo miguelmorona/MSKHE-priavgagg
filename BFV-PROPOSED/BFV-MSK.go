@@ -1,4 +1,4 @@
-// Copyright 2026 Miguel Morona Mínguez
+// Copyright 2026 Miguel Morona Mínguez, Alberto Pedrouzo Ulloa
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ var flaglogN = flag.Int("logN", 10, "logarithm of lattice dimension.")
 var flagBitLevelSize = flag.Int("bitlevelsize", 16, "size in bits of each level.")
 var flagPreComputeA = flag.Bool("precomputea", false, "'a' polynomials components are precomputed before the encryption phase.")
 
-// parameters: general onfiguration settings for private aggregation
+// parameters: general configuration settings for private aggregation
 type parameters struct {
 
 	// Protocol parameters
@@ -69,8 +69,8 @@ type parameters struct {
 	PreComputeA bool
 
 	// Cryptographic parameters
-	logN   int    // quotient polynomial Ring degree
-	logQ   [2]int // logQ[0] = #Primes, logQ[1] = Primes bit-size
+	logN   int    // logarithm of the quotient polynomial Ring degree
+	logQ   [2]int // logQ[0] = #primes, logQ[1] = bits per prime (one limb)
 	plevel int    // Maximum level for the modulus "p" (level 0 is the lowest available level)
 }
 
@@ -83,17 +83,17 @@ var benchParameters = []parameters{
 
 //-----------------------------------------------------------------------------------------//
 
-//Set 1: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0}, //n:4
+//Set 1: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0},
 //Set 2: -
-//Set 3: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0}, //n:2
+//Set 3: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0},
 //Set 4: -
 
 //-----------------------------------------------------------------------------------------//
 
 // Definition of variables used to measure runtime for specific steps of the aggregation protocol
+var elapsedInput time.Duration
 var elapsedSetupCloud time.Duration // elapsedSetupCloud = 0 (no setup required for the Aggregator)
 var elapsedSetupParty time.Duration
-var elapsedInputParty time.Duration
 var elapsedSetupParty_ri time.Duration
 var elapsedSetupGaussianParty time.Duration
 var elapsedPreprocessingEncryptParty time.Duration
@@ -197,7 +197,6 @@ func (lns *lowNormSampler) newPolyLowNorm(norm *big.Int) (pol ring.Poly) {
 }
 
 // main function. Example execution on terminal:
-
 // go run ./BFV-MSK.go 
 
 
@@ -294,10 +293,10 @@ func main() {
 			// Initialize low-norm sampler for generating low-norm polynomials in ringQ
 			lowNormUniformQ := newLowNormSampler(ringQ)
 
-			l.Printf("\t\t\t||   1.c. GENERATION OF INPUT PARTIES AND KEYS:                                                                          ||")
+			l.Printf("\t\t\t||   1. GENERATION OF INPUT PARTIES AND KEYS:                                                                          ||")
 
+			elapsedInput = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
-			elapsedInputParty = time.Duration(0)
 			elapsedSetupParty_ri := time.Duration(0)
 
 			P := genParties(priaggrings, ternarySamplerMontgomeryQ, NumParties)
@@ -306,14 +305,14 @@ func main() {
 			elapsedSetupParty_ri += runTimed(func() {
 				genSetupShare(priaggrings, uniformSamplerQ, P)
 			})
-			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", time.Duration(2)*elapsedSetupParty_ri)
+			l.Printf("\t\t\t||           - Generation of secret randomness r_i              %12s                                             ||", time.Duration(2)*elapsedSetupParty_ri) // Conservative estimate (upper bound) of the actual setup time per party for r_i generation
 			l.Printf("\t\t\t||                                                                                                                       ||")
-			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", time.Duration(2)*elapsedSetupParty_ri+elapsedSetupParty)
+			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", time.Duration(2)*elapsedSetupParty_ri+elapsedSetupParty) // Conservative estimate (upper bound) of the actual setup time per party
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   2. GENERATION OF INPUTS FOR VERIFICATION                                                                            ||")
 			aggexparray := genInputs(priaggrings, lowNormUniformQ, n, P, param) // The expected result is the aggregation of all the party models (aggexp = m_0 + m_1 + ... + m_{L-1})
 			l.Printf("\t\t\t||                                                                                                                       ||")
-			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedInputParty)
+			l.Printf("\t\t\t||           ✅ Done. Time for input generation and computation of the expected result: %12s                                                                       ||", elapsedInput)
 
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   3. ENCRYPTION PHASE                                                                                                 ||")
@@ -348,13 +347,15 @@ func main() {
 			flatAggExp := make([]int, len(aggexparray)*len(aggexparray[0].Coeffs[param.plevel]))
 			flatRecAggShare := make([]int, len(aggexparray)*len(aggexparray[0].Coeffs[param.plevel]))
 			idx := 0
+			
 			for _, poly := range aggexparray {
 				for _, coeff := range poly.Coeffs[param.plevel] {
 					flatAggExp[idx] = int(coeff)
 					idx++
 				}
 			}
-			elapsedDecCloud += runTimedParty(func() {	
+			
+			elapsedDecCloud += runTimed(func() {
 				idx = 0
 				for _, poly := range recAggShare {
 					for _, coeff := range poly.Coeffs[param.plevel] {
@@ -362,7 +363,7 @@ func main() {
 						idx++
 					}
 				}
-			},len(P))
+			})
 
 			l.Printf("\t\t\t||                                                                                                                       ||")
 			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedDecCloud+elapsedDecParty)
@@ -414,8 +415,8 @@ func main() {
 				l.Printf("\t\t\t||=======================================================================================================================||")
 			}
 
-			SetupMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
-			GenInputMean += (elapsedInputParty) / time.Duration(nexperiments)
+			SetupMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments) // Conservative estimate (upper bound) of the actual setup time per party
+			GenInputMean += (elapsedInput) / time.Duration(nexperiments)
 			EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 			AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 			DecMean += (elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
@@ -423,7 +424,7 @@ func main() {
 
 			elapsedSetupParty_ri = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
-			elapsedInputParty = time.Duration(0)
+			elapsedInput = time.Duration(0)
 			elapsedEncryptCloud = time.Duration(0)
 			elapsedEncryptParty = time.Duration(0)
 			elapsedEvalCloud = time.Duration(0)
@@ -462,7 +463,7 @@ func genParties(aggring *AggRings, secretkeysampler ring.Sampler, NumParties int
 	P := make([]*party, NumParties)
 
 	// Track the setup time for party initialization
-	elapsedSetupParty += runTimedParty(func() {
+	elapsedSetupParty = runTimedParty(func() {
 
 		// Generate and initialize the secret key for each party
 		for i := range P {
@@ -533,8 +534,8 @@ func genSetupShare(aggring *AggRings, uniformsampler ring.Sampler, P []*party) {
 
 func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*party, param parameters) (aggexp []ring.Poly) {
 
-	// Measure the elapsed time for input generation across all parties
-	elapsedInputParty += runTimedParty(func() {
+	// Measure the elapsed time for input generation across all parties and obtain the expected aggregation result
+	elapsedInput += runTimed(func() {
 
 		// Step 1: Initialize "aggexp" as an array of "n" polynomials to store the aggregate sum of each input polynomial across all parties
 		aggexp = make([]ring.Poly, n)
@@ -563,7 +564,7 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
 			aggexp[i].Resize(param.plevel)           // Adjust size to match the level "plevel"
 		}
 
-	}, len(P))
+	})
 
 	// Output: Return the accumulated expected result "aggexp" containing the sum of each party's input polynomials
 
@@ -596,6 +597,7 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
 func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ ring.Sampler, n int, P []*party, param parameters) (encInputs [][]ring.Poly, partialDec [][]ring.Poly) { // to point or not to point, that's the question
 
 	// Measure elapsed time for encryption phase across all parties
+	elapsedEncryptCloud = time.Duration(0)
 	elapsedEncryptParty = time.Duration(0)
 
 	// Temporary buffers for polynomial operations
@@ -659,7 +661,7 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 				partialDec[i][j] = aggring.ringQ.NewPoly()
 				aggring.ringQ.MulCoeffsMontgomery(P[i].sk, a, partialDec[i][j])
 
-				//ringQ.MForm(pd[i], pd[i])
+				// ringQ.MForm(pd[i], pd[i])
 				// c = NTT(m * (Q/P) + e) + NTT(a) * MForm(NTT(ri))
 				// c = NTT(m * (Q/P) + e + a*ri)
 				//ringQ.MForm(c[i], c[i])
@@ -708,8 +710,10 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 
 func evalPhase(aggring *AggRings, n int, encInput [][]ring.Poly, param parameters) (encShareAgg []ring.Poly) {
 
+	elapsedEvalParty = time.Duration(0)
+
 	// Measure and add time spent on this function to "elapsedEvalCloud"
-	elapsedEvalCloud += runTimed(func() {
+	elapsedEvalCloud = runTimed(func() {
 
 		// Initialize "encShareAgg" to store the aggregated ciphertext for each input
 		encShareAgg = make([]ring.Poly, n)
@@ -718,8 +722,8 @@ func evalPhase(aggring *AggRings, n int, encInput [][]ring.Poly, param parameter
 		}
 
 		// Aggregation process: iterate over each input index "j"
-		for j := 0; j < n; j++ { // Loop through each ciphertext slot
-			for i := 0; i < len(encInput); i++ { // Loop through each party
+		for j := 0; j < n; j++ { // Loop through each ciphertext
+			for i := 0; i < len(encInput); i++ { // Loop through the encrypted update of each party
 				// Add the encrypted input from party "i" to the aggregate for the current input "j"
 				aggring.ringQ.Add(encInput[i][j], encShareAgg[j], encShareAgg[j])
 			}			
@@ -761,8 +765,9 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 	// allowing the cloud to securely perform decryption.
 
 	// Initialize a timer to measure the decryption phase duration.
+	elapsedDecParty = time.Duration(0)
 	elapsedDecCloud = time.Duration(0)
-	elapsedDecCloud += runTimed(func() {
+	elapsedDecCloud = runTimed(func() {
 
 		buff := aggring.ringQ.NewPoly()
 
