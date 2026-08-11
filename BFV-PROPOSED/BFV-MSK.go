@@ -258,7 +258,7 @@ func main() {
 		l.Printf("\t\t\t||           - Level of security:                          128 bits                                                      ||")
 		l.Printf("\t\t\t||           - Ring degree:                                2^%2d                                                          ||", param.logN)
 		l.Printf("\t\t\t||           - Ciphertext modulus (Q):                     %2d bits                                                       ||", uint(param.logQ[0]*param.logQ[1]))
-		l.Printf("\t\t\t||           - Number of values per ciphertext (MaxSlots): %4d                                                          ||", (1 << (param.logN)))
+		l.Printf("\t\t\t||           - Number of values per ciphertext: %4d                                                          ||", (1 << (param.logN)))
 		l.Printf("\t\t\t||                                                                                                                       ||")
 
 		SetupMean = time.Duration(0)
