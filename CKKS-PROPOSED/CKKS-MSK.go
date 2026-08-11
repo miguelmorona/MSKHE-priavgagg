@@ -1,4 +1,4 @@
-// Copyright 2026 Miguel Morona Mínguez
+// Copyright 2026 Miguel Morona Mínguez, Alberto Pedrouzo Ulloa
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"log"
-	"math"
 	"math/big"
 	"os"
 	"time"
@@ -68,8 +67,8 @@ type parameters struct {
 	PreComputeA bool
 
 	// Cryptographic parameters
-	logN        int    // quotient polynomial Ring degree
-	logQ        [2]int // logQ[0] = #Primes, logQ[1] = Primes bit-size
+	logN        int    // logarithm of the quotient polynomial Ring degree
+	logQ        [2]int // logQ[0] = #primes, logQ[1] = bits per prime (one limb)
 	plevel      int    // Maximum level for the modulus "p" (level 0 is the lowest available level)
 	bench_Delta int    // Delta = 2^bench_Delta. It must be less than q1 (second limb) such that m~q0 and Delta*m ~ q1*q0 = plevel
 	bench_eps   int    // Epsilon = 2^bench_eps. It must be less than q1 (second limb) such that m~q0 and Delta*m ~ q1*q0 = plevel
@@ -93,7 +92,7 @@ var benchParameters = []parameters{
 // Definition of variables used to measure runtime for specific steps of the aggregation protocol
 var elapsedSetupCloud time.Duration // elapsedSetupCloud = 0 (no setup required for the Aggregator)
 var elapsedSetupParty time.Duration
-var elapsedInputParty time.Duration
+var elapsedInput time.Duration
 var elapsedSetupParty_ri time.Duration
 var elapsedSetupGaussianParty time.Duration
 var elapsedPreprocessingEncryptParty time.Duration
@@ -202,7 +201,6 @@ func PolyToFloat64Slice(pol ring.Poly, r *ring.Ring) []float64 {
 }
 
 // main function. Example execution on terminal:
-
 // go run ./CKKS-MSK.go 
 
 func main() {
@@ -306,8 +304,8 @@ func main() {
 
 			l.Printf("\t\t\t||   1.c. GENERATION OF INPUT PARTIES AND KEYS:                                                                          ||")
 
+			elapsedInput = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
-			elapsedInputParty = time.Duration(0)
 			elapsedSetupParty_ri := time.Duration(0)
 
 			P := genParties(priaggrings, ternarySamplerMontgomeryQ, NumParties)
@@ -323,7 +321,7 @@ func main() {
 			l.Printf("\t\t\t||   2. GENERATION OF INPUTS FOR VERIFICATION                                                                            ||")
 			aggexparray := genInputs(priaggrings, lowNormUniformQ, n, P, param) // The expected result is the aggregation of all the party models (aggexp = m_0 + m_1 + ... + m_{L-1})
 			l.Printf("\t\t\t||                                                                                                                       ||")
-			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedInputParty)
+			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedInput)
 
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   3. ENCRYPTION PHASE                                                                                                 ||")
@@ -364,68 +362,192 @@ func main() {
 				flatAggExp = append(flatAggExp, PolyToSignedFloat64Slice(poly, ringQ)...)
 			}
 
+			partiesBig := big.NewInt(int64(NumParties))
+			denominator := new(big.Int).Mul(priaggrings.Delta, partiesBig)
+			
+			// Expected result normalization is not part of the decryption timing.
+			flatAggExp = DivideByBigInt(flatAggExp, denominator)
+			
 			var flatRecAggShare []float64
 
-			elapsedDecCloud += runTimedParty(func() {			
-			for _, poly := range recAggShare {
-				flatRecAggShare = append(flatRecAggShare, PolyToSignedFloat64Slice(poly, ringQ)...)
+			// Preallocate the final output outside the timed region.
+			flatRecAggShare = make(
+				[]float64,
+				0,
+				len(recAggShare)*ringQ.N(),
+			)
+
+			// Select the fast CRT path when Q fits in uint64.
+			level := recAggShare[0].Level()
+			moduli := ringQ.ModuliChain()[:level+1]
+
+			QBig := big.NewInt(1)
+			for _, qi := range moduli {
+				QBig.Mul(QBig, new(big.Int).SetUint64(qi))
 			}
 
-			},len(P))
+			useUint64CRT := level == 1 && QBig.BitLen() <= 64
+
+			var q0, q1, q0InvModQ1, Q64, QHalf uint64
+
+			if useUint64CRT {
+				q0 = moduli[0]
+				q1 = moduli[1]
+				Q64 = QBig.Uint64()
+				QHalf = Q64 >> 1
+
+				inv := new(big.Int).ModInverse(
+					new(big.Int).SetUint64(q0%q1),
+					new(big.Int).SetUint64(q1),
+				)
+
+				q0InvModQ1 = inv.Uint64()
+			}
+
+			elapsedDecCloud += runTimed(func() {
+			
+				if useUint64CRT {
+					for _, poly := range recAggShare {
+						flatRecAggShare = append(
+							flatRecAggShare,
+							PolyToSignedFloat64SliceUint64(
+								poly,
+								q0,
+								q1,
+								q0InvModQ1,
+								Q64,
+								QHalf,
+							)...,
+						)
+					}
+				} else {
+					for _, poly := range recAggShare {
+						flatRecAggShare = append(
+							flatRecAggShare,
+							PolyToSignedFloat64Slice(poly, ringQ)...,
+						)
+					}
+				}
+
+				// Final normalization.
+				flatRecAggShare = DivideByBigInt(
+					flatRecAggShare,
+					denominator,
+				)
+			})
 
 			l.Printf("\t\t\t||                                                                                                                       ||")
 			l.Printf("\t\t\t||           ✅ Done. Time per party: %12s                                                                       ||", elapsedDecCloud+elapsedDecParty)
+
 			l.Printf("\t\t\t||-----------------------------------------------------------------------------------------------------------------------||")
 			l.Printf("\t\t\t||   6. PRECISION ANALYSIS                                                                                               ||")
 			l.Printf("\t\t\t||           - Total running time (per client + agg): %12s                                                       ||", elapsedSetupParty_ri+elapsedSetupParty+elapsedEncryptCloud+elapsedEncryptParty+elapsedEvalCloud+elapsedEvalParty+elapsedDecCloud+elapsedDecParty)
 			l.Printf("\t\t\t||           - Results decoded. Showing some rows:                                                                       ||")
 			l.Printf("\t\t\t||                                                                                                                       ||")
 
-			partiesBig := big.NewInt(int64(NumParties))
-			modulus := new(big.Int).Mul(priaggrings.Delta, partiesBig)
-			
-			flatAggExp = DivideByBigInt(flatAggExp, modulus)
-			flatRecAggShare = DivideByBigInt(flatRecAggShare, modulus)				
+			// Use exact integers to validate precision larger than float64 can represent.
+			var flatAggExpBig, flatRecAggShareBig []*big.Int
 
-			maxAbsErr := 0.0
-			nerror := 0
-			relErrorThreshold := math.Exp2(float64(-eps))
-
-
-			for i := range flatAggExp {
-				diff := math.Abs(float64(flatAggExp[i] - flatRecAggShare[i]))
-
-				// Track maximum error
-				if diff > maxAbsErr {
-					maxAbsErr = diff
-				}
-
-				if diff > relErrorThreshold {
-					nerror++
-				}			
-
-				if i < 65 || i >= (len(flatAggExp))-65 {
-					l.Printf("\t\t\t||   Row [%8d] of Aggregated Model w.  Exp Agg Result: %14.8f, Decrypted: %14.8f, AbsErr= %.2e  ||", i+1, flatAggExp[i], flatRecAggShare[i], diff)
-				}
-				
-
+			for _, poly := range aggexparray {
+				flatAggExpBig = append(
+					flatAggExpBig,
+					PolyToSignedBigIntSlice(poly, ringQ)...,
+				)
 			}
 
-			// If not all results match, log fail.
-			if maxAbsErr > relErrorThreshold {
+			for _, poly := range recAggShare {
+				flatRecAggShareBig = append(
+					flatRecAggShareBig,
+					PolyToSignedBigIntSlice(poly, ringQ)...,
+				)
+			}
+
+			maxAbsErrInt := new(big.Int)
+			nerror := 0
+
+			// Compare exactly:
+			//
+			//     |expected - decrypted| / denominator > 2^-eps
+			//
+			// which is equivalent to:
+			//
+			//     |expected - decrypted| * 2^eps > denominator
+			for i := range flatAggExpBig {
+
+				diffInt := new(big.Int).Sub(
+					flatAggExpBig[i],
+					flatRecAggShareBig[i],
+				)
+				diffInt.Abs(diffInt)
+
+				// Track maximum exact error.
+				if diffInt.Cmp(maxAbsErrInt) > 0 {
+					maxAbsErrInt.Set(diffInt)
+				}
+
+				// Exact precision check without float64.
+				scaledDiff := new(big.Int).Lsh(
+					new(big.Int).Set(diffInt),
+					uint(eps),
+				)
+
+				if scaledDiff.Cmp(denominator) > 0 {
+					nerror++
+				}
+
+				if i < 65 || i >= len(flatAggExpBig)-65 {
+
+					// big.Float is only used to print the normalized error.
+					diffFloat := new(big.Float).SetPrec(128).SetInt(diffInt)
+					diffFloat.Quo(
+						diffFloat,
+						new(big.Float).SetPrec(128).SetInt(denominator),
+					)
+
+					l.Printf(
+						"\t\t\t||   Row [%8d] of Aggregated Model w.  Exp Agg Result: %14.8f, Decrypted: %14.8f, AbsErr= %s  ||",
+						i+1,
+						flatAggExp[i],
+						flatRecAggShare[i],
+						diffFloat.Text('e', 2),
+					)
+				}
+			}
+
+			// Convert maximum error to high-precision floating point only for printing.
+			maxAbsErr := new(big.Float).SetPrec(128).SetInt(maxAbsErrInt)
+			maxAbsErr.Quo(
+				maxAbsErr,
+				new(big.Float).SetPrec(128).SetInt(denominator),
+			)
+
+			// Compute 2^-eps with high precision only for printing.
+			thresholdDen := new(big.Int).Lsh(
+				big.NewInt(1),
+				uint(eps),
+			)
+
+			relErrorThreshold := new(big.Float).SetPrec(128).SetInt64(1)
+			relErrorThreshold.Quo(
+				relErrorThreshold,
+				new(big.Float).SetPrec(128).SetInt(thresholdDen),
+			)
+
+			// If not all results match the required precision, log fail.
+			if nerror > 0 {
 				l.Printf("\t\t\t||                                                                                      ||===============================||")
-				l.Printf("\t\t\t||                                                                                      ||  Max Absolute Error: %.2e ||", maxAbsErr)
-				l.Printf("\t\t\t||                                                                                      || Precision Threshold: %.2e ||", relErrorThreshold)
+				l.Printf("\t\t\t||                                                                                      ||  Max Absolute Error: %s ||", maxAbsErr.Text('e', 2))
+				l.Printf("\t\t\t||                                                                                      || Precision Threshold: %s ||", relErrorThreshold.Text('e', 2))
 				l.Printf("\t\t\t||                                                                                      || Number of errors:    %7d  ||", nerror)
 				l.Printf("\t\t\t||                                                                                      ||===============================||")
 				l.Printf("\t\t\t||=======================================================================================================================||")
 				l.Printf("\t\t\t||                                            ❌ ❌  INCORRECT :((                                                       ||")
-				l.Printf("\t\t\t||=======================================================================================================================||")				
+				l.Printf("\t\t\t||=======================================================================================================================||")
 			} else {
-				// If all results match, log success.
+				// If all results match the required precision, log success.
 				l.Printf("\t\t\t||                                                                                      ||===============================||")
-				l.Printf("\t\t\t||                                                                                      ||  Max Absolute Error: %.2e ||", maxAbsErr)
-				l.Printf("\t\t\t||                                                                                      || Precision Threshold: %.2e ||", relErrorThreshold)
+				l.Printf("\t\t\t||                                                                                      ||  Max Absolute Error: %s ||", maxAbsErr.Text('e', 2))
+				l.Printf("\t\t\t||                                                                                      || Precision Threshold: %s ||", relErrorThreshold.Text('e', 2))
 				l.Printf("\t\t\t||                                                                                      || Number of errors:    %7d  ||", nerror)
 				l.Printf("\t\t\t||                                                                                      ||===============================||")
 				l.Printf("\t\t\t||=======================================================================================================================||")
@@ -440,7 +562,7 @@ func main() {
 			// ----------------------------------------------------------------------------------------------//
 
 			SetupMean += (time.Duration(2)*elapsedSetupParty_ri + elapsedSetupParty) / time.Duration(nexperiments)
-			GenInputMean += (elapsedInputParty) / time.Duration(nexperiments)
+			GenInputMean += (elapsedInput) / time.Duration(nexperiments)
 			EncPhaseMean += (elapsedEncryptCloud + elapsedEncryptParty) / time.Duration(nexperiments)
 			AggMean += (elapsedEvalCloud + elapsedEvalParty) / time.Duration(nexperiments)
 			DecMean += (elapsedDecCloud + elapsedDecParty) / time.Duration(nexperiments)
@@ -448,7 +570,7 @@ func main() {
 
 			elapsedSetupParty_ri = time.Duration(0)
 			elapsedSetupParty = time.Duration(0)
-			elapsedInputParty = time.Duration(0)
+			elapsedInput = time.Duration(0)
 			elapsedEncryptCloud = time.Duration(0)
 			elapsedEncryptParty = time.Duration(0)
 			elapsedEvalCloud = time.Duration(0)
@@ -490,7 +612,7 @@ func genParties(aggring *AggRings, secretkeysampler ring.Sampler, NumParties int
 	P := make([]*party, NumParties)
 
 	// Track the setup time for party initialization
-	elapsedSetupParty += runTimedParty(func() {
+	elapsedSetupParty = runTimedParty(func() {
 
 		// Generate and initialize the secret key for each party
 		for i := range P {
@@ -561,7 +683,7 @@ func genSetupShare(aggring *AggRings, uniformsampler ring.Sampler, P []*party) {
 
 func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*party, param parameters) (aggexp []ring.Poly) {
 
-    elapsedInputParty += runTimedParty(func() {
+    elapsedInput += runTimed(func() {
 
         aggexp = make([]ring.Poly, n)
         for i := 0; i < n; i++ {
@@ -573,7 +695,7 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
         for _, pi := range P {
             pi.input = make([]ring.Poly, n)
             for i := 0; i < n; i++ {
-                // Generate in range [-Delta, Delta]
+                // Generate in range [-Δ, Δ]
                 pi.input[i] = lowNormUniformQ.newPolyLowNorm(delta)
 
                 // Transform to NTT
@@ -590,7 +712,7 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
             //aggexp[i].Resize(param.plevel)           
         }
 
-    }, len(P))
+    })
 
     return aggexp
 }
@@ -620,6 +742,7 @@ func genInputs(aggring *AggRings, lowNormUniformQ *lowNormSampler, n int, P []*p
 func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ ring.Sampler, n int, P []*party) (encInputs [][]ring.Poly, partialDec [][]ring.Poly) { // to point or not to point, that's the question
 
 	// Measure elapsed time for encryption phase across all parties
+	elapsedEncryptCloud = time.Duration(0)
 	elapsedEncryptParty = time.Duration(0)
 
 	tmp := aggring.ringQ.NewPoly() // Temporary polynomial for computation steps
@@ -670,9 +793,9 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 
 				//----------------Noises finish------------------//
 
-				// tmp_1 = NTT(m * Q/P) for scaling. No necessary. The message is already scaled by Delta in inputs.
+				// tmp_1 = NTT(m * Δ) for scaling. No necessary. The message is already scaled by Delta in inputs.
 
-				// c = NTT(m * (Q/P) + e)
+				// c = NTT(m * (Δ) + e)
 				aggring.ringQ.Add(encInputs[i][j], P[i].input[j], encInputs[i][j]) // Add scaled message to noise
 
 				// NTT(pdi) = NTT(a)*NTT(MF(ski))) = NTT(a*ski)
@@ -680,13 +803,13 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 				aggring.ringQ.MulCoeffsMontgomery(P[i].sk, a, partialDec[i][j])
 
 				//ringQ.MForm(pd[i], pd[i])
-				// c = NTT(m * (Q/P) + e) + NTT(a) * MForm(NTT(ri))
-				// c = NTT(m * (Q/P) + e + a*ri)
+				// c = NTT(m * (Δ) + e) + NTT(a) * MForm(NTT(ri))
+				// c = NTT(m * (Δ) + e + a*ri)
 				//ringQ.MForm(c[i], c[i])
 				aggring.ringQ.MulCoeffsMontgomery(a, P[i].r, tmp) // Multiply "a" with party's randomness "r" and add to ciphertext
 				aggring.ringQ.Add(tmp, encInputs[i][j], encInputs[i][j])
 
-				// c = NTT(m * (Q/P) + e + a*ri + a*ski)
+				// c = NTT(m * (Δ) + e + a*ri + a*ski)
 				aggring.ringQ.Add(encInputs[i][j], partialDec[i][j], encInputs[i][j]) // Complete encryption: add a*ski
 
 				//----------------partialdec = NTT(ask + e - e') ----------------------------------------------------//
@@ -725,8 +848,10 @@ func encPhase(aggring *AggRings, gaussianSamplerQ ring.Sampler, uniformSamplerQ 
 
 func evalPhase(aggring *AggRings, n int, encInput [][]ring.Poly) (encShareAgg []ring.Poly) {
 
+	elapsedEvalParty = time.Duration(0)
+
 	// Measure and add time spent on this function to "elapsedEvalCloud"
-	elapsedEvalCloud += runTimed(func() {
+	elapsedEvalCloud = runTimed(func() {
 
 		// Initialize "encShareAgg" to store the aggregated ciphertext for each input
 		encShareAgg = make([]ring.Poly, n)
@@ -780,8 +905,9 @@ func decPhase(aggring *AggRings, partialDec [][]ring.Poly, encShareAgg []ring.Po
 	// allowing the cloud to securely perform decryption.
 
 	// Initialize a timer to measure the decryption phase duration.
+	elapsedDecParty = time.Duration(0)
 	elapsedDecCloud = time.Duration(0)
-	elapsedDecCloud += runTimed(func() {
+	elapsedDecCloud = runTimed(func() {
 
 		//buff := aggring.ringQ.NewPoly()
 
@@ -864,4 +990,67 @@ func PolyToSignedFloat64Slice(pol ring.Poly, r *ring.Ring) []float64 {
 		coeffs[i] = f
 	}
 	return coeffs
+}
+
+
+func PolyToSignedFloat64SliceUint64(
+	pol ring.Poly,
+	q0, q1, q0InvModQ1, Q, QHalf uint64,
+) []float64 {
+
+	N := len(pol.Coeffs[0])
+	coeffs := make([]float64, N)
+
+	for i := 0; i < N; i++ {
+		a := pol.Coeffs[0][i]
+		b := pol.Coeffs[1][i]
+
+		aModQ1 := a % q1
+
+		var diff uint64
+		if b >= aModQ1 {
+			diff = b - aModQ1
+		} else {
+			diff = q1 - (aModQ1 - b)
+		}
+
+		t := (diff * q0InvModQ1) % q1
+		x := a + q0*t
+
+		// Center the coefficient in [-Q/2, Q/2].
+		if x > QHalf {
+			coeffs[i] = -float64(Q - x)
+		} else {
+			coeffs[i] = float64(x)
+		}
+	}
+
+	return coeffs
+}
+
+func PolyToSignedBigIntSlice(pol ring.Poly, r *ring.Ring) []*big.Int {
+	level := pol.Level()
+	N := r.N()
+
+	Q := big.NewInt(1)
+	for _, qi := range r.ModuliChain()[:level+1] {
+		Q.Mul(Q, new(big.Int).SetUint64(qi))
+	}
+
+	QHalf := new(big.Int).Rsh(new(big.Int).Set(Q), 1)
+
+	bigCoeffs := make([]*big.Int, N)
+	for i := range bigCoeffs {
+		bigCoeffs[i] = new(big.Int)
+	}
+
+	r.AtLevel(level).PolyToBigint(pol, 1, bigCoeffs)
+
+	for i := range bigCoeffs {
+		if bigCoeffs[i].Cmp(QHalf) > 0 {
+			bigCoeffs[i].Sub(bigCoeffs[i], Q)
+		}
+	}
+
+	return bigCoeffs
 }
