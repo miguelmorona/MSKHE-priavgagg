@@ -164,7 +164,7 @@ func main() {
 		LogN:             13,
 		LogQ:             []int{60, 60}, // 120 BITS
 		LogP:             []int{31},
-		PlaintextModulus: 638977, // 39*2^14 + 1 (20 bits)
+		PlaintextModulus: 3489793, // 213*2^14 + 1 (22 bits)
 	}
 
 	nexperiments := 25
