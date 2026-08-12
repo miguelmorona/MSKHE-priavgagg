@@ -76,16 +76,16 @@ type parameters struct {
 
 var benchParameters = []parameters{
 	//----------------------------------------------------------------------------------------------------------------------//
-	{NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 30},
+	{NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 32},
 	//----------------------------------------------------------------------------------------------------------------------//
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------//
 
 //Set 1: --
-//Set 2: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 30},
+//Set 2: {NumParties: 32, n: 8000, PreComputeA: false, logN: 11, logQ: [2]int{2, 21}, plevel: 0, bench_Delta: 40, bench_eps: 32},
 //Set 3: --
-//Set 4: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0, bench_Delta: 90, bench_eps: 80},
+//Set 4: {NumParties: 32, n: 4000, PreComputeA: false, logN: 12, logQ: [2]int{2, 46}, plevel: 0, bench_Delta: 90, bench_eps: 82},
 
 //-------------------------------------------------------------------------------------------------------------------------------//
 
