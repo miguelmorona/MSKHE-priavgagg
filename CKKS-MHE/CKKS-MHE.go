@@ -274,11 +274,11 @@ func main() {
 			if math.Abs(expRes[i]-res[i]) > MaxDiff {
 				MaxDiff = math.Abs(expRes[i] - res[i])
 			}
-			if math.Abs(expRes[i]-res[i]) > math.Exp2(float64(-20)) { //Epsilon = 2^-20
+			if math.Abs(expRes[i]-res[i]) > math.Exp2(float64(-22)) { //Epsilon = 2^-22
 				// Log error detfails if there is a mismatch.
 				l.Printf("\tincorrect\n first error in position [%d]\n", i)
 				l.Printf("Max Error: %v", MaxDiff)
-				l.Printf("Epsilon: %v", math.Exp2(float64(-20)))
+				l.Printf("Epsilon: %v", math.Exp2(float64(-22)))
 				l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud+elapsedDecodeCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty+elapsedDecodeParty)
 				return
 			}
@@ -286,7 +286,7 @@ func main() {
 		// If all results match, log success.
 		l.Println("\tcorrect")
 		l.Printf("Max Error: %v", MaxDiff)
-		l.Printf("Epsilon: %v", math.Exp2(float64(-20)))
+		l.Printf("Epsilon: %v", math.Exp2(float64(-22)))
 		l.Printf("> Finished (total cloud: %s, total party: %s)\n", elapsedCKGCloud+elapsedEncryptCloud+elapsedEvalCloud+elapsedPCKSCloud+elapsedDecCloud+elapsedDecodeCloud, elapsedCKGParty+elapsedEncryptParty+elapsedEvalParty+elapsedPCKSParty+elapsedDecParty+elapsedDecodeParty)
 
 		SetupMean += (elapsedCKGCloud + elapsedCKGParty + elapsedSetupParty) / time.Duration(nexperiments)
